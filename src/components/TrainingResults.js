@@ -1,20 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import toast from 'react-hot-toast';
+import GradCAMViewer from './GradCAMViewer';
 
 const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, onTrainingComplete, onReset }) => {
   const [trainingData, setTrainingData] = useState([]);
   const [currentEpoch, setCurrentEpoch] = useState(0);
+  const [currentPhase, setCurrentPhase] = useState(1);
   const [isExporting, setIsExporting] = useState(false);
   const [exportFormat, setExportFormat] = useState('tensorflow');
   const [trainingStartTime, setTrainingStartTime] = useState(null);
   const [trainingDuration, setTrainingDuration] = useState(0);
   const [isStoppingTraining, setIsStoppingTraining] = useState(false);
+  const [activeTab, setActiveTab] = useState('charts');
+  const [showGradCAMTab, setShowGradCAMTab] = useState(false);
+  const [gradcamLoading, setGradcamLoading] = useState(false);
 
   useEffect(() => {
     if (isTraining && !results) {
       startTraining();
-      // Start the timer when training begins
       setTrainingStartTime(Date.now());
     }
   }, [isTraining]);
@@ -28,7 +32,6 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
         setTrainingDuration(Math.floor((Date.now() - trainingStartTime) / 1000));
       }, 1000);
     } else if (!isTraining && trainingStartTime) {
-      // Training stopped, calculate final duration
       setTrainingDuration(Math.floor((Date.now() - trainingStartTime) / 1000));
     }
     
@@ -36,6 +39,14 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
       if (interval) clearInterval(interval);
     };
   }, [isTraining, trainingStartTime]);
+
+  // Auto-start Grad-CAM when training completes
+  useEffect(() => {
+    if (!isTraining && results && !showGradCAMTab && trainingConfig.modelType === 'efficientnetv2') {
+      console.log('🔮 Starting Grad-CAM computation...');
+      computeGradCAM();
+    }
+  }, [isTraining, results]);
 
   const formatDuration = (seconds) => {
     if (seconds < 60) {
@@ -53,12 +64,16 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
 
   const startTraining = async () => {
     try {
+      const endpoint = trainingConfig.modelType === 'efficientnetv2' 
+        ? '/api/train-efficientnet' 
+        : '/api/train';
+
       const payload = {
         config: trainingConfig,
         dataInfo: uploadedData
       };
 
-      const response = await fetch('/api/train', {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -71,7 +86,6 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
         throw new Error(errorData.error || 'Training failed to start');
       }
 
-      // Start polling for training progress
       pollTrainingProgress();
     } catch (error) {
       toast.error(error.message);
@@ -86,9 +100,9 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
 
       if (data.status === 'training') {
         setCurrentEpoch(data.epoch);
+        setCurrentPhase(data.current_phase || 1);
         setTrainingData(data.history || []);
         
-        // Continue polling
         setTimeout(pollTrainingProgress, 1000);
       } else if (data.status === 'completed') {
         setCurrentEpoch(data.epoch || trainingConfig.epochs);
@@ -108,7 +122,35 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
       }
     } catch (error) {
       console.error('Error polling training progress:', error);
-      setTimeout(pollTrainingProgress, 2000); // Retry with longer delay
+      setTimeout(pollTrainingProgress, 2000);
+    }
+  };
+
+  const computeGradCAM = async () => {
+    try {
+      setGradcamLoading(true);
+      const sessionId = uploadedData?.preview?.session_id;
+      
+      if (!sessionId) {
+        console.error('Session ID not found');
+        setGradcamLoading(false);
+        return;
+      }
+
+      const response = await fetch('/api/compute-gradcam', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId })
+      });
+
+      if (response.ok) {
+        console.log('✅ Grad-CAM computation started');
+        setShowGradCAMTab(true);
+      }
+    } catch (error) {
+      console.error('Error starting Grad-CAM:', error);
+    } finally {
+      setGradcamLoading(false);
     }
   };
 
@@ -144,11 +186,12 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
       
       if (response.ok) {
         toast.success('Training state reset successfully');
-        // Reset local state
         setTrainingData([]);
         setCurrentEpoch(0);
         setTrainingDuration(0);
         setTrainingStartTime(null);
+        setShowGradCAMTab(false);
+        setCurrentPhase(1);
         onReset();
       } else {
         const data = await response.json();
@@ -189,9 +232,22 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
   };
 
   const getTrainingProgress = () => {
-    if (!trainingConfig.epochs) return 0;
-    if (results && !isTraining) return 100; // Force 100% when completed
-    return Math.min((currentEpoch / trainingConfig.epochs) * 100, 100);
+    if (trainingConfig.modelType === 'efficientnetv2') {
+      const totalEpochs = (trainingConfig.epochs || 30) + (trainingConfig.phase2_epochs || 25);
+      if (results && !isTraining) return 100;
+      return Math.min((currentEpoch / totalEpochs) * 100, 100);
+    } else {
+      if (!trainingConfig.epochs) return 0;
+      if (results && !isTraining) return 100;
+      return Math.min((currentEpoch / trainingConfig.epochs) * 100, 100);
+    }
+  };
+
+  const getTotalEpochs = () => {
+    if (trainingConfig.modelType === 'efficientnetv2') {
+      return (trainingConfig.epochs || 30) + (trainingConfig.phase2_epochs || 25);
+    }
+    return trainingConfig.epochs || 100;
   };
 
   const getCurrentMetrics = () => {
@@ -208,6 +264,8 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
         return 'Multi-Layer Perceptron (MLP)';
       case 'cnn':
         return 'Convolutional Neural Network (CNN)';
+      case 'efficientnetv2':
+        return 'EfficientNetV2 (Transfer Learning)';
       default:
         return 'Neural Network';
     }
@@ -254,6 +312,11 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
             <p className="text-gray-600 mt-2">
               Model: {getModelTypeDisplayName()}
             </p>
+            {isTraining && trainingConfig.modelType === 'efficientnetv2' && (
+              <p className="text-sm text-blue-600 mt-1">
+                Phase {currentPhase}/2: {currentPhase === 1 ? 'Training classification head' : 'Fine-tuning base model'}
+              </p>
+            )}
           </div>
           <div className="text-right">
             <div className="text-sm text-gray-500">Progress</div>
@@ -298,7 +361,12 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
         {/* Progress Bar */}
         <div className="mb-6">
           <div className="flex justify-between text-sm text-gray-600 mb-2">
-            <span>Epoch {currentEpoch} of {trainingConfig.epochs}</span>
+            <span>
+              Epoch {currentEpoch} of {getTotalEpochs()}
+              {isTraining && trainingConfig.modelType === 'efficientnetv2' && (
+                <span> (Phase {currentPhase})</span>
+              )}
+            </span>
             <span>{Math.round(getTrainingProgress())}% Complete</span>
           </div>
           <div className="w-full bg-gray-200 rounded-full h-3">
@@ -376,146 +444,324 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
         )}
       </div>
 
-      {/* Training Charts */}
+      {/* Tabs Navigation */}
       {trainingData.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Loss Chart */}
-          <div className="bg-white rounded-xl shadow-lg p-6">
-            <h3 className="text-xl font-semibold text-gray-900 mb-4">Training & Validation Loss</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={trainingData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="epoch" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Line 
-                  type="monotone" 
-                  dataKey="loss" 
-                  stroke="#ef4444" 
-                  strokeWidth={2}
-                  name="Training Loss"
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="val_loss" 
-                  stroke="#f97316" 
-                  strokeWidth={2}
-                  name="Validation Loss"
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+        <div className="bg-white rounded-t-xl shadow-lg border-b">
+          <div className="flex overflow-x-auto">
+            <button
+              onClick={() => setActiveTab('charts')}
+              className={`px-6 py-4 font-medium whitespace-nowrap transition-colors ${
+                activeTab === 'charts'
+                  ? 'border-b-2 border-blue-600 text-blue-600'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              📈 Charts
+            </button>
 
-          {/* Accuracy Chart */}
-          <div className="bg-white rounded-xl shadow-lg p-6">
-            <h3 className="text-xl font-semibold text-gray-900 mb-4">Training & Validation Accuracy</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={trainingData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="epoch" />
-                <YAxis />
-                <Tooltip formatter={(value) => [`${(value * 100).toFixed(2)}%`, '']} />
-                <Legend />
-                <Line 
-                  type="monotone" 
-                  dataKey="accuracy" 
-                  stroke="#22c55e" 
-                  strokeWidth={2}
-                  name="Training Accuracy"
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="val_accuracy" 
-                  stroke="#3b82f6" 
-                  strokeWidth={2}
-                  name="Validation Accuracy"
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            <button
+              onClick={() => setActiveTab('metrics')}
+              className={`px-6 py-4 font-medium whitespace-nowrap transition-colors ${
+                activeTab === 'metrics'
+                  ? 'border-b-2 border-blue-600 text-blue-600'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              📊 Metrics
+            </button>
+
+            {/* Grad-CAM Tab - Only for EfficientNetV2 */}
+            {trainingConfig.modelType === 'efficientnetv2' && (
+              <button
+                onClick={() => setActiveTab('gradcam')}
+                className={`px-6 py-4 font-medium whitespace-nowrap transition-colors ${
+                  activeTab === 'gradcam'
+                    ? 'border-b-2 border-purple-600 text-purple-600'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                🔍 Grad-CAM
+                {!showGradCAMTab && <span className="ml-2 text-xs">⏳</span>}
+              </button>
+            )}
+
+            <button
+              onClick={() => setActiveTab('export')}
+              className={`px-6 py-4 font-medium whitespace-nowrap transition-colors ${
+                activeTab === 'export'
+                  ? 'border-b-2 border-blue-600 text-blue-600'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              📦 Export
+            </button>
           </div>
         </div>
       )}
 
-      {/* Export Section - Only show when training is complete */}
-      {!isTraining && trainingData.length > 0 && results && (
-        <div className="bg-white rounded-xl shadow-lg p-8">
-          <h3 className="text-xl font-semibold text-gray-900 mb-6">Export Trained Model</h3>
+      {/* Tab Content */}
+      {trainingData.length > 0 && (
+        <div className={`bg-white rounded-b-xl shadow-lg p-8 ${activeTab === 'charts' || activeTab === 'metrics' || activeTab === 'export' ? '' : 'rounded-xl'}`}>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {/* Training Summary */}
+          {/* Charts Tab */}
+          {activeTab === 'charts' && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Loss Chart */}
+              <div className="bg-gray-50 rounded-lg p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Training & Validation Loss</h3>
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={trainingData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="epoch" />
+                    <YAxis />
+                    <Tooltip />
+                    <Legend />
+                    <Line 
+                      type="monotone" 
+                      dataKey="loss" 
+                      stroke="#ef4444" 
+                      strokeWidth={2}
+                      name="Training Loss"
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="val_loss" 
+                      stroke="#f97316" 
+                      strokeWidth={2}
+                      name="Validation Loss"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Accuracy Chart */}
+              <div className="bg-gray-50 rounded-lg p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Training & Validation Accuracy</h3>
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={trainingData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="epoch" />
+                    <YAxis />
+                    <Tooltip formatter={(value) => [`${(value * 100).toFixed(2)}%`, '']} />
+                    <Legend />
+                    <Line 
+                      type="monotone" 
+                      dataKey="accuracy" 
+                      stroke="#22c55e" 
+                      strokeWidth={2}
+                      name="Training Accuracy"
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="val_accuracy" 
+                      stroke="#3b82f6" 
+                      strokeWidth={2}
+                      name="Validation Accuracy"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
+          {/* Metrics Tab */}
+          {activeTab === 'metrics' && (
             <div>
-              <h4 className="font-medium text-gray-900 mb-4">Training Summary</h4>
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Model Type:</span>
-                  <span className="font-medium">{getModelTypeDisplayName()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Total Epochs:</span>
-                  <span className="font-medium">{currentEpoch} / {trainingConfig.epochs}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Training Time:</span>
-                  <span className="font-medium">{formatDuration(trainingDuration)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Final Loss:</span>
-                  <span className="font-medium">{getCurrentMetrics()?.loss?.toFixed(4) || 'N/A'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Final Accuracy:</span>
-                  <span className="font-medium">
-                    {getCurrentMetrics()?.accuracy ? `${(getCurrentMetrics().accuracy * 100).toFixed(2)}%` : 'N/A'}
-                  </span>
-                </div>
-                {results?.results?.total_params && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Parameters:</span>
-                    <span className="font-medium">{results.results.total_params.toLocaleString()}</span>
+              <h3 className="text-xl font-semibold text-gray-900 mb-6">Detailed Training Metrics</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Summary Stats */}
+                <div className="bg-blue-50 rounded-lg p-6 border border-blue-200">
+                  <h4 className="font-semibold text-blue-900 mb-4">Training Summary</h4>
+                  <div className="space-y-3 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-blue-700">Model Type:</span>
+                      <span className="font-medium text-blue-900">{getModelTypeDisplayName()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-blue-700">Total Epochs:</span>
+                      <span className="font-medium text-blue-900">{currentEpoch} / {getTotalEpochs()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-blue-700">Training Time:</span>
+                      <span className="font-medium text-blue-900">{formatDuration(trainingDuration)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-blue-700">Final Loss:</span>
+                      <span className="font-medium text-blue-900">{getCurrentMetrics()?.loss?.toFixed(4)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-blue-700">Final Accuracy:</span>
+                      <span className="font-medium text-blue-900">
+                        {getCurrentMetrics()?.accuracy ? `${(getCurrentMetrics().accuracy * 100).toFixed(2)}%` : 'N/A'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-blue-700">Final Val Loss:</span>
+                      <span className="font-medium text-blue-900">{getCurrentMetrics()?.val_loss?.toFixed(4)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-blue-700">Final Val Accuracy:</span>
+                      <span className="font-medium text-blue-900">
+                        {getCurrentMetrics()?.val_accuracy ? `${(getCurrentMetrics().val_accuracy * 100).toFixed(2)}%` : 'N/A'}
+                      </span>
+                    </div>
                   </div>
-                )}
-              </div>
-            </div>
-            
-            {/* Export Options */}
-            <div>
-              <h4 className="font-medium text-gray-900 mb-4">Export Options</h4>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Format</label>
-                  <select
-                    value={exportFormat}
-                    onChange={(e) => setExportFormat(e.target.value)}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2"
-                  >
-                    <option value="tensorflow">TensorFlow SavedModel</option>
-                    <option value="onnx">ONNX Format</option>
-                  </select>
                 </div>
-                <button
-                  onClick={handleExport}
-                  disabled={isExporting}
-                  className="w-full px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
-                >
-                  {isExporting ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2"></div>
-                      Exporting...
-                    </>
-                  ) : (
-                    <>
-                      <span className="mr-2">📦</span>
-                      Export Model
-                    </>
-                  )}
-                </button>
-                <p className="text-sm text-gray-500">
-                  Export your trained model for use in other applications
-                </p>
+
+                {/* Configuration Info */}
+                <div className="bg-green-50 rounded-lg p-6 border border-green-200">
+                  <h4 className="font-semibold text-green-900 mb-4">Training Configuration</h4>
+                  <div className="space-y-3 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-green-700">Optimizer:</span>
+                      <span className="font-medium text-green-900">{trainingConfig.optimizer?.toUpperCase()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-green-700">Learning Rate:</span>
+                      <span className="font-medium text-green-900">{trainingConfig.learningRate}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-green-700">Batch Size:</span>
+                      <span className="font-medium text-green-900">{trainingConfig.batchSize}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-green-700">Validation Split:</span>
+                      <span className="font-medium text-green-900">{(trainingConfig.validationSplit * 100).toFixed(0)}%</span>
+                    </div>
+                    {trainingConfig.modelType === 'efficientnetv2' && (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-green-700">Phase 1 Epochs:</span>
+                          <span className="font-medium text-green-900">{trainingConfig.epochs}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-green-700">Phase 2 Epochs:</span>
+                          <span className="font-medium text-green-900">{trainingConfig.phase2_epochs}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-green-700">Phase 2 LR:</span>
+                          <span className="font-medium text-green-900">{trainingConfig.phase2_learning_rate}</span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
+          )}
+
+          {/* Grad-CAM Tab */}
+          {activeTab === 'gradcam' && trainingConfig.modelType === 'efficientnetv2' && (
+            <div>
+              {showGradCAMTab && !gradcamLoading ? (
+                <GradCAMViewer
+                  sessionId={uploadedData?.preview?.session_id}
+                  modelId={results?.model_type}
+                />
+              ) : (
+                <div className="text-center py-16">
+                  <div className="animate-spin rounded-full h-16 w-16 border-4 border-purple-600 border-t-transparent mx-auto mb-4"></div>
+                  <p className="text-gray-600 font-medium text-lg">Computing Grad-CAM Visualization...</p>
+                  <p className="text-gray-500 text-sm mt-3">This may take 30-60 seconds. Please be patient.</p>
+                  <div className="mt-6">
+                    <div className="w-80 h-2 bg-gray-200 rounded-full mx-auto overflow-hidden">
+                      <div className="h-full bg-purple-600 animate-pulse" style={{ width: '60%' }}></div>
+                    </div>
+                  </div>
+                  <p className="text-purple-600 text-xs mt-4 italic">
+                    Processing selected images from each class...
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Export Tab */}
+          {activeTab === 'export' && !isTraining && results && (
+            <div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-6">Export Trained Model</h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Summary */}
+                <div>
+                  <h4 className="font-medium text-gray-900 mb-4">Training Summary</h4>
+                  <div className="space-y-3">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Model Type:</span>
+                      <span className="font-medium">{getModelTypeDisplayName()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Total Epochs:</span>
+                      <span className="font-medium">{currentEpoch} / {getTotalEpochs()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Training Time:</span>
+                      <span className="font-medium">{formatDuration(trainingDuration)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Final Loss:</span>
+                      <span className="font-medium">{getCurrentMetrics()?.loss?.toFixed(4) || 'N/A'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Final Accuracy:</span>
+                      <span className="font-medium">
+                        {getCurrentMetrics()?.accuracy ? `${(getCurrentMetrics().accuracy * 100).toFixed(2)}%` : 'N/A'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Validation Accuracy:</span>
+                      <span className="font-medium">
+                        {getCurrentMetrics()?.val_accuracy ? `${(getCurrentMetrics().val_accuracy * 100).toFixed(2)}%` : 'N/A'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Export Options */}
+                <div>
+                  <h4 className="font-medium text-gray-900 mb-4">Export Options</h4>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Export Format</label>
+                      <select
+                        value={exportFormat}
+                        onChange={(e) => setExportFormat(e.target.value)}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        <option value="tensorflow">TensorFlow SavedModel</option>
+                        <option value="onnx">ONNX Format</option>
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Choose the format that best suits your deployment needs
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleExport}
+                      disabled={isExporting}
+                      className="w-full px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center"
+                    >
+                      {isExporting ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2"></div>
+                          Exporting...
+                        </>
+                      ) : (
+                        <>
+                          <span className="mr-2">📦</span>
+                          Export Model
+                        </>
+                      )}
+                    </button>
+                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                      <p className="text-sm text-blue-800">
+                        <strong>Note:</strong> Your trained model will be packaged with all necessary files for deployment.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
