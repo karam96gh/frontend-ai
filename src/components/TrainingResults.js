@@ -508,70 +508,76 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
       </div>
 
       {/* Tabs Navigation */}
-      {trainingData.length > 0 && (
-        <div className="bg-white rounded-t-xl shadow-lg border-b">
-          <div className="flex overflow-x-auto">
-            <button
-              onClick={() => setActiveTab('charts')}
-              className={`px-6 py-4 font-medium whitespace-nowrap transition-colors ${
-                activeTab === 'charts'
-                  ? 'border-b-2 border-blue-600 text-blue-600'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              📈 Charts
-            </button>
-
-            <button
-              onClick={() => setActiveTab('metrics')}
-              className={`px-6 py-4 font-medium whitespace-nowrap transition-colors ${
-                activeTab === 'metrics'
-                  ? 'border-b-2 border-blue-600 text-blue-600'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              📊 Metrics
-            </button>
-
-            {/* Grad-CAM Tab - Only for EfficientNetV2 */}
-            {trainingConfig.modelType === 'efficientnetv2' && (
+      <div className="bg-white rounded-t-xl shadow-lg border-b">
+        <div className="flex overflow-x-auto">
+          {trainingData.length > 0 && (
+            <>
               <button
-                onClick={() => setActiveTab('gradcam')}
+                onClick={() => setActiveTab('charts')}
                 className={`px-6 py-4 font-medium whitespace-nowrap transition-colors ${
-                  activeTab === 'gradcam'
-                    ? 'border-b-2 border-purple-600 text-purple-600'
+                  activeTab === 'charts'
+                    ? 'border-b-2 border-blue-600 text-blue-600'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
-                🔍 Grad-CAM
-                {!showGradCAMTab && <span className="ml-2 text-xs">⏳</span>}
+                📈 Charts
               </button>
-            )}
 
+              <button
+                onClick={() => setActiveTab('metrics')}
+                className={`px-6 py-4 font-medium whitespace-nowrap transition-colors ${
+                  activeTab === 'metrics'
+                    ? 'border-b-2 border-blue-600 text-blue-600'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                📊 Metrics
+              </button>
+            </>
+          )}
+
+          {/* Grad-CAM Tab - Always show for EfficientNetV2 */}
+          {trainingConfig.modelType === 'efficientnetv2' && (
             <button
-              onClick={() => setActiveTab('iterations')}
+              onClick={() => setActiveTab('gradcam')}
               className={`px-6 py-4 font-medium whitespace-nowrap transition-colors ${
-                activeTab === 'iterations'
-                  ? 'border-b-2 border-blue-600 text-blue-600'
+                activeTab === 'gradcam'
+                  ? 'border-b-2 border-purple-600 text-purple-600'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              🔄 Iterations
+              🔍 Grad-CAM
+              {!showGradCAMTab && <span className="ml-2 text-xs">⏳</span>}
             </button>
+          )}
 
-            <button
-              onClick={() => setActiveTab('export')}
-              className={`px-6 py-4 font-medium whitespace-nowrap transition-colors ${
-                activeTab === 'export'
-                  ? 'border-b-2 border-blue-600 text-blue-600'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              📦 Export
-            </button>
-          </div>
+          {trainingData.length > 0 && (
+            <>
+              <button
+                onClick={() => setActiveTab('iterations')}
+                className={`px-6 py-4 font-medium whitespace-nowrap transition-colors ${
+                  activeTab === 'iterations'
+                    ? 'border-b-2 border-blue-600 text-blue-600'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                🔄 Iterations
+              </button>
+
+              <button
+                onClick={() => setActiveTab('export')}
+                className={`px-6 py-4 font-medium whitespace-nowrap transition-colors ${
+                  activeTab === 'export'
+                    ? 'border-b-2 border-blue-600 text-blue-600'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                📦 Export
+              </button>
+            </>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Tab Content */}
       {trainingData.length > 0 && (
