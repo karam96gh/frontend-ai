@@ -24,6 +24,7 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
 
   // Ref لمنع تشغيل التدريب أكثر من مرة
   const trainingStartedRef = useRef(false);
+  const pollingTimeoutRef = useRef(null);
 
   useEffect(() => {
     if (isTraining && !results && !trainingStartedRef.current) {
@@ -34,6 +35,16 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
       trainingStartedRef.current = false;
     }
   }, [isTraining]);
+
+  // Cleanup polling على unmount
+  useEffect(() => {
+    return () => {
+      if (pollingTimeoutRef.current) {
+        clearTimeout(pollingTimeoutRef.current);
+        console.log('🧹 Polling cleanup on unmount');
+      }
+    };
+  }, []);
 
   // Timer effect - updates every second while training
   useEffect(() => {
@@ -107,6 +118,7 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
       pollTrainingProgress();
     } catch (error) {
       console.error('❌ Training start error:', error);
+      trainingStartedRef.current = false; // إعادة تعيين للسماح بإعادة المحاولة
       toast.error(error.message);
       onTrainingComplete(null);
     }
@@ -119,7 +131,7 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
 
       if (!response.ok) {
         console.error(`❌ Training progress API returned ${response.status}`);
-        setTimeout(pollTrainingProgress, 2000);
+        pollingTimeoutRef.current = setTimeout(pollTrainingProgress, 2000);
         return;
       }
 
@@ -147,7 +159,7 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
         setIterationDetails(data.iteration_details || []);
 
         console.log('⏰ Scheduling next poll in 1 second...');
-        setTimeout(pollTrainingProgress, 1000);
+        pollingTimeoutRef.current = setTimeout(pollTrainingProgress, 1000);
       } else if (data.status === 'completed') {
         console.log('✅ Training completed!', data);
         setCurrentEpoch(data.epoch || trainingConfig.epochs);
@@ -168,11 +180,11 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
         onTrainingComplete(null);
       } else {
         console.warn('⚠️ Unknown training status:', data.status);
-        setTimeout(pollTrainingProgress, 2000);
+        pollingTimeoutRef.current = setTimeout(pollTrainingProgress, 2000);
       }
     } catch (error) {
       console.error('❌ Error polling training progress:', error);
-      setTimeout(pollTrainingProgress, 2000);
+      pollingTimeoutRef.current = setTimeout(pollTrainingProgress, 2000);
     }
   };
 
@@ -180,29 +192,41 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
     try {
       setGradcamLoading(true);
       const sessionId = uploadedData?.preview?.session_id;
-      
+
+      console.log('🔮 computeGradCAM called with sessionId:', sessionId);
+
       if (!sessionId) {
-        console.error('Session ID not found');
+        console.error('❌ Session ID not found!');
         setGradcamLoading(false);
         return;
       }
 
+      console.log('📤 Sending POST to /api/compute-gradcam...');
       const response = await fetch('/api/compute-gradcam', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId })
       });
 
+      console.log('📥 Response status:', response.status, response.ok);
+
       if (response.ok) {
-        console.log('✅ Grad-CAM computation started');
+        const data = await response.json();
+        console.log('✅ Grad-CAM computation started successfully:', data);
         setShowGradCAMTab(true);
         // Switch UI to the Grad-CAM tab so the viewer can poll and display results
         setActiveTab('gradcam');
+        console.log('✅ Switched to gradcam tab, showGradCAMTab=true');
+      } else {
+        console.error('❌ Grad-CAM API returned error:', response.status);
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Error details:', errorData);
       }
     } catch (error) {
-      console.error('Error starting Grad-CAM:', error);
+      console.error('❌ Error starting Grad-CAM:', error);
     } finally {
       setGradcamLoading(false);
+      console.log('🔄 gradcamLoading set to false');
     }
   };
 
@@ -1037,6 +1061,40 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Grad-CAM Tab - Outside trainingData check */}
+      {activeTab === 'gradcam' && trainingConfig.modelType === 'efficientnetv2' && (
+        <div className="bg-white rounded-xl shadow-lg p-8">
+          {/* Debug Info */}
+          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs">
+            <strong>🐛 Grad-CAM Debug:</strong>
+            showGradCAMTab: {showGradCAMTab ? 'true' : 'false'} |
+            gradcamLoading: {gradcamLoading ? 'true' : 'false'} |
+            sessionId: {uploadedData?.preview?.session_id || 'undefined'}
+          </div>
+
+          {showGradCAMTab && !gradcamLoading ? (
+            <GradCAMViewer
+              sessionId={uploadedData?.preview?.session_id}
+              modelId={results?.model_type}
+            />
+          ) : (
+            <div className="text-center py-16">
+              <div className="animate-spin rounded-full h-16 w-16 border-4 border-purple-600 border-t-transparent mx-auto mb-4"></div>
+              <p className="text-gray-600 font-medium text-lg">Computing Grad-CAM Visualization...</p>
+              <p className="text-gray-500 text-sm mt-3">This may take 30-60 seconds. Please be patient.</p>
+              <div className="mt-6">
+                <div className="w-80 h-2 bg-gray-200 rounded-full mx-auto overflow-hidden">
+                  <div className="h-full bg-purple-600 animate-pulse" style={{ width: '60%' }}></div>
+                </div>
+              </div>
+              <p className="text-purple-600 text-xs mt-4 italic">
+                Processing selected images from each class...
+              </p>
             </div>
           )}
         </div>
