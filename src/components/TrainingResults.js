@@ -552,33 +552,34 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
               </button>
             )}
 
-          {trainingData.length > 0 && (
-            <>
-              <button
-                onClick={() => setActiveTab('iterations')}
-                className={`px-6 py-4 font-medium whitespace-nowrap transition-colors ${
-                  activeTab === 'iterations'
-                    ? 'border-b-2 border-blue-600 text-blue-600'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                🔄 Iterations
-              </button>
+            {trainingData.length > 0 && (
+              <>
+                <button
+                  onClick={() => setActiveTab('iterations')}
+                  className={`px-6 py-4 font-medium whitespace-nowrap transition-colors ${
+                    activeTab === 'iterations'
+                      ? 'border-b-2 border-blue-600 text-blue-600'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  🔄 Iterations
+                </button>
 
-              <button
-                onClick={() => setActiveTab('export')}
-                className={`px-6 py-4 font-medium whitespace-nowrap transition-colors ${
-                  activeTab === 'export'
-                    ? 'border-b-2 border-blue-600 text-blue-600'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                📦 Export
-              </button>
-            </>
-          )}
+                <button
+                  onClick={() => setActiveTab('export')}
+                  className={`px-6 py-4 font-medium whitespace-nowrap transition-colors ${
+                    activeTab === 'export'
+                      ? 'border-b-2 border-blue-600 text-blue-600'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  📦 Export
+                </button>
+              </>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Tab Content */}
       {trainingData.length > 0 && (
