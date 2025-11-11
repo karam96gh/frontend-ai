@@ -15,23 +15,30 @@ const GradCAMViewer = ({ sessionId, modelId }) => {
   const fetchGradCAMData = async () => {
     setIsLoading(true);
     try {
+      console.log(`🔍 Fetching Grad-CAM data for session: ${sessionId}`);
       const response = await fetch(`/api/gradcam-status/${sessionId}`);
       const data = await response.json();
 
+      console.log('📊 Grad-CAM Status Response:', data);
+
       if (data.status === 'completed' && data.data) {
         setGradcamData(data.data);
+        setIsLoading(false);
         console.log('✅ Grad-CAM data loaded:', data.data.num_samples, 'samples');
+        toast.success(`تم تحميل ${data.data.num_samples} صور بنجاح`);
       } else if (data.status === 'computing') {
-        // إعادة المحاولة بعد 3 ثوان
+        console.log('⏳ Grad-CAM still computing, retrying in 3 seconds...');
+        // إعادة المحاولة بعد 3 ثوان - أبقِ isLoading = true
         setTimeout(fetchGradCAMData, 3000);
       } else {
+        console.error('❌ Unexpected Grad-CAM status:', data);
+        setIsLoading(false);
         toast.error('فشل تحميل بيانات Grad-CAM');
       }
     } catch (error) {
-      console.error('Error fetching Grad-CAM:', error);
-      toast.error('خطأ في تحميل البيانات');
-    } finally {
+      console.error('❌ Error fetching Grad-CAM:', error);
       setIsLoading(false);
+      toast.error('خطأ في تحميل البيانات');
     }
   };
 

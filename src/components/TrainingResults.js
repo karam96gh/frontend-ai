@@ -114,7 +114,15 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
 
   const pollTrainingProgress = async () => {
     try {
+      console.log('🔄 Polling training progress...');
       const response = await fetch('/api/training-progress');
+
+      if (!response.ok) {
+        console.error(`❌ Training progress API returned ${response.status}`);
+        setTimeout(pollTrainingProgress, 2000);
+        return;
+      }
+
       const data = await response.json();
 
       console.log('📊 Training Progress:', {
@@ -126,6 +134,7 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
       });
 
       if (data.status === 'training') {
+        console.log('✅ Status is training, updating UI...');
         setCurrentEpoch(data.epoch);
         setCurrentPhase(data.current_phase || 1);
         setTrainingData(data.history || []);
@@ -137,6 +146,7 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
         setBatchAccuracy(data.batch_accuracy || 0);
         setIterationDetails(data.iteration_details || []);
 
+        console.log('⏰ Scheduling next poll in 1 second...');
         setTimeout(pollTrainingProgress, 1000);
       } else if (data.status === 'completed') {
         console.log('✅ Training completed!', data);
@@ -156,6 +166,9 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
         console.log('⏹️ Training stopped');
         toast.info('Training was stopped');
         onTrainingComplete(null);
+      } else {
+        console.warn('⚠️ Unknown training status:', data.status);
+        setTimeout(pollTrainingProgress, 2000);
       }
     } catch (error) {
       console.error('❌ Error polling training progress:', error);
@@ -772,6 +785,14 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
           {/* Grad-CAM Tab */}
           {activeTab === 'gradcam' && trainingConfig.modelType === 'efficientnetv2' && (
             <div>
+              {/* Debug Info */}
+              <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs">
+                <strong>🐛 Grad-CAM Debug:</strong>
+                showGradCAMTab: {showGradCAMTab ? 'true' : 'false'} |
+                gradcamLoading: {gradcamLoading ? 'true' : 'false'} |
+                sessionId: {uploadedData?.preview?.session_id || 'undefined'}
+              </div>
+
               {showGradCAMTab && !gradcamLoading ? (
                 <GradCAMViewer
                   sessionId={uploadedData?.preview?.session_id}
