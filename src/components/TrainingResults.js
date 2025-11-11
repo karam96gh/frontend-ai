@@ -117,7 +117,13 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
       const response = await fetch('/api/training-progress');
       const data = await response.json();
 
-      console.log('📊 Training Progress:', data);
+      console.log('📊 Training Progress:', {
+        status: data.status,
+        epoch: data.epoch,
+        phase: data.current_phase,
+        batch: `${data.current_batch}/${data.total_batches}`,
+        historyLength: data.history?.length
+      });
 
       if (data.status === 'training') {
         setCurrentEpoch(data.epoch);
@@ -152,7 +158,7 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
         onTrainingComplete(null);
       }
     } catch (error) {
-      console.error('Error polling training progress:', error);
+      console.error('❌ Error polling training progress:', error);
       setTimeout(pollTrainingProgress, 2000);
     }
   };
@@ -335,6 +341,19 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
     <div className="space-y-6">
       {/* Training Status */}
       <div className="bg-white rounded-xl shadow-lg p-8">
+        {/* Debug Info - سيتم إزالتها لاحقاً */}
+        {isTraining && (
+          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs">
+            <strong>🐛 Debug Info:</strong>
+            Epoch: {currentEpoch} |
+            Phase: {currentPhase} |
+            Batch: {currentBatch}/{totalBatches} |
+            Loss: {batchLoss.toFixed(4)} |
+            Acc: {(batchAccuracy * 100).toFixed(2)}% |
+            History Length: {trainingData.length}
+          </div>
+        )}
+
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-3xl font-bold text-gray-900">Training Results</h2>
