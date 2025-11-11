@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import toast from 'react-hot-toast';
 import GradCAMViewer from './GradCAMViewer';
@@ -22,10 +22,16 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
   const [batchAccuracy, setBatchAccuracy] = useState(0);
   const [iterationDetails, setIterationDetails] = useState([]);
 
+  // Ref لمنع تشغيل التدريب أكثر من مرة
+  const trainingStartedRef = useRef(false);
+
   useEffect(() => {
-    if (isTraining && !results) {
+    if (isTraining && !results && !trainingStartedRef.current) {
+      trainingStartedRef.current = true;
       startTraining();
       setTrainingStartTime(Date.now());
+    } else if (!isTraining) {
+      trainingStartedRef.current = false;
     }
   }, [isTraining]);
 
@@ -70,8 +76,13 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
 
   const startTraining = async () => {
     try {
-      const endpoint = trainingConfig.modelType === 'efficientnetv2' 
-        ? '/api/train-efficientnet' 
+      console.log('🚀 Starting training...', {
+        modelType: trainingConfig.modelType,
+        config: trainingConfig
+      });
+
+      const endpoint = trainingConfig.modelType === 'efficientnetv2'
+        ? '/api/train-efficientnet'
         : '/api/train';
 
       const payload = {
@@ -92,8 +103,10 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
         throw new Error(errorData.error || 'Training failed to start');
       }
 
+      console.log('✅ Training started, beginning polling...');
       pollTrainingProgress();
     } catch (error) {
+      console.error('❌ Training start error:', error);
       toast.error(error.message);
       onTrainingComplete(null);
     }
@@ -103,6 +116,8 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
     try {
       const response = await fetch('/api/training-progress');
       const data = await response.json();
+
+      console.log('📊 Training Progress:', data);
 
       if (data.status === 'training') {
         setCurrentEpoch(data.epoch);
@@ -118,6 +133,7 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
 
         setTimeout(pollTrainingProgress, 1000);
       } else if (data.status === 'completed') {
+        console.log('✅ Training completed!', data);
         setCurrentEpoch(data.epoch || trainingConfig.epochs);
         setTrainingData(data.history || []);
         onTrainingComplete({
@@ -127,9 +143,11 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
         });
         toast.success('Training completed successfully!');
       } else if (data.status === 'error') {
+        console.error('❌ Training error:', data.error_message);
         toast.error(data.error_message || 'Training failed');
         onTrainingComplete(null);
       } else if (data.status === 'stopped') {
+        console.log('⏹️ Training stopped');
         toast.info('Training was stopped');
         onTrainingComplete(null);
       }
