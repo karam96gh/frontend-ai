@@ -15,6 +15,12 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
   const [activeTab, setActiveTab] = useState('charts');
   const [showGradCAMTab, setShowGradCAMTab] = useState(false);
   const [gradcamLoading, setGradcamLoading] = useState(false);
+  // إضافة state للـ iterations
+  const [currentBatch, setCurrentBatch] = useState(0);
+  const [totalBatches, setTotalBatches] = useState(0);
+  const [batchLoss, setBatchLoss] = useState(0);
+  const [batchAccuracy, setBatchAccuracy] = useState(0);
+  const [iterationDetails, setIterationDetails] = useState([]);
 
   useEffect(() => {
     if (isTraining && !results) {
@@ -102,7 +108,14 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
         setCurrentEpoch(data.epoch);
         setCurrentPhase(data.current_phase || 1);
         setTrainingData(data.history || []);
-        
+
+        // تحديث معلومات الـ iterations
+        setCurrentBatch(data.current_batch || 0);
+        setTotalBatches(data.total_batches || 0);
+        setBatchLoss(data.batch_loss || 0);
+        setBatchAccuracy(data.batch_accuracy || 0);
+        setIterationDetails(data.iteration_details || []);
+
         setTimeout(pollTrainingProgress, 1000);
       } else if (data.status === 'completed') {
         setCurrentEpoch(data.epoch || trainingConfig.epochs);
@@ -146,6 +159,8 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
       if (response.ok) {
         console.log('✅ Grad-CAM computation started');
         setShowGradCAMTab(true);
+        // Switch UI to the Grad-CAM tab so the viewer can poll and display results
+        setActiveTab('gradcam');
       }
     } catch (error) {
       console.error('Error starting Grad-CAM:', error);
@@ -375,6 +390,54 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
               style={{ width: `${getTrainingProgress()}%` }}
             ></div>
           </div>
+
+          {/* Iteration Progress - يظهر فقط أثناء التدريب */}
+          {isTraining && totalBatches > 0 && (
+            <div className="mt-4 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+              <div className="flex justify-between items-center text-sm mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-blue-900">
+                    Batch Progress: {currentBatch} / {totalBatches}
+                  </span>
+                  {trainingConfig.modelType === 'efficientnetv2' && (
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                      currentPhase === 1
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-purple-500 text-white'
+                    }`}>
+                      Phase {currentPhase}
+                    </span>
+                  )}
+                </div>
+                <span className="text-blue-700 font-semibold">
+                  {totalBatches > 0 ? Math.round((currentBatch / totalBatches) * 100) : 0}%
+                </span>
+              </div>
+
+              {/* شريط تقدم الـ batch */}
+              <div className="w-full bg-blue-200 rounded-full h-2 mb-2">
+                <div
+                  className={`h-2 rounded-full transition-all duration-200 ${
+                    trainingConfig.modelType === 'efficientnetv2' && currentPhase === 2
+                      ? 'bg-gradient-to-r from-purple-500 to-pink-600'
+                      : 'bg-gradient-to-r from-blue-500 to-indigo-600'
+                  }`}
+                  style={{ width: `${totalBatches > 0 ? (currentBatch / totalBatches) * 100 : 0}%` }}
+                ></div>
+              </div>
+
+              {/* معلومات الـ batch الحالي */}
+              <div className="flex justify-between text-xs text-blue-700">
+                <span>Loss: {batchLoss.toFixed(4)}</span>
+                <span>Accuracy: {(batchAccuracy * 100).toFixed(2)}%</span>
+                {trainingConfig.modelType === 'efficientnetv2' && (
+                  <span className="text-purple-700 font-medium">
+                    {currentPhase === 1 ? '🎯 Training Head' : '🔧 Fine-tuning'}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Current Metrics */}
@@ -484,6 +547,17 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
                 {!showGradCAMTab && <span className="ml-2 text-xs">⏳</span>}
               </button>
             )}
+
+            <button
+              onClick={() => setActiveTab('iterations')}
+              className={`px-6 py-4 font-medium whitespace-nowrap transition-colors ${
+                activeTab === 'iterations'
+                  ? 'border-b-2 border-blue-600 text-blue-600'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              🔄 Iterations
+            </button>
 
             <button
               onClick={() => setActiveTab('export')}
@@ -670,6 +744,143 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
                   </div>
                   <p className="text-purple-600 text-xs mt-4 italic">
                     Processing selected images from each class...
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Iterations Tab */}
+          {activeTab === 'iterations' && (
+            <div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-6">Training Iterations Details</h3>
+
+              {/* Current Batch Info (أثناء التدريب) */}
+              {isTraining && totalBatches > 0 && (
+                <div className={`mb-6 p-6 rounded-lg border-2 ${
+                  trainingConfig.modelType === 'efficientnetv2' && currentPhase === 2
+                    ? 'bg-gradient-to-br from-purple-50 to-pink-100 border-purple-300'
+                    : 'bg-gradient-to-br from-blue-50 to-indigo-100 border-blue-300'
+                }`}>
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className={`text-lg font-semibold ${
+                      trainingConfig.modelType === 'efficientnetv2' && currentPhase === 2
+                        ? 'text-purple-900'
+                        : 'text-blue-900'
+                    }`}>
+                      🔄 Live Training Progress
+                    </h4>
+                    {trainingConfig.modelType === 'efficientnetv2' && (
+                      <div className="flex items-center gap-2">
+                        <span className={`px-3 py-1 rounded-full text-sm font-bold ${
+                          currentPhase === 1
+                            ? 'bg-blue-500 text-white'
+                            : 'bg-purple-500 text-white'
+                        }`}>
+                          Phase {currentPhase}/2
+                        </span>
+                        <span className="text-sm text-gray-600">
+                          {currentPhase === 1 ? '(Training Head)' : '(Fine-tuning)'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="bg-white rounded-lg p-4 shadow-sm">
+                      <div className="text-sm text-gray-600">Current Batch</div>
+                      <div className="text-2xl font-bold text-blue-600">{currentBatch}</div>
+                      <div className="text-xs text-gray-500">of {totalBatches}</div>
+                    </div>
+                    <div className="bg-white rounded-lg p-4 shadow-sm">
+                      <div className="text-sm text-gray-600">Batch Progress</div>
+                      <div className={`text-2xl font-bold ${
+                        trainingConfig.modelType === 'efficientnetv2' && currentPhase === 2
+                          ? 'text-purple-600'
+                          : 'text-indigo-600'
+                      }`}>
+                        {totalBatches > 0 ? Math.round((currentBatch / totalBatches) * 100) : 0}%
+                      </div>
+                      <div className="text-xs text-gray-500">in current epoch</div>
+                    </div>
+                    <div className="bg-white rounded-lg p-4 shadow-sm">
+                      <div className="text-sm text-gray-600">Batch Loss</div>
+                      <div className="text-2xl font-bold text-red-600">{batchLoss.toFixed(4)}</div>
+                      <div className="text-xs text-gray-500">current iteration</div>
+                    </div>
+                    <div className="bg-white rounded-lg p-4 shadow-sm">
+                      <div className="text-sm text-gray-600">Batch Accuracy</div>
+                      <div className="text-2xl font-bold text-green-600">
+                        {(batchAccuracy * 100).toFixed(2)}%
+                      </div>
+                      <div className="text-xs text-gray-500">current iteration</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Recent Iterations Table */}
+              {iterationDetails.length > 0 ? (
+                <div>
+                  <h4 className="font-semibold text-gray-900 mb-4">📊 Recent Iterations (Last 100)</h4>
+                  <div className="overflow-auto max-h-96 border border-gray-200 rounded-lg">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50 sticky top-0">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Epoch
+                          </th>
+                          {trainingConfig.modelType === 'efficientnetv2' && (
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Phase
+                            </th>
+                          )}
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Batch
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Loss
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Accuracy
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {iterationDetails.slice().reverse().map((iteration, idx) => (
+                          <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                              {iteration.epoch}
+                            </td>
+                            {trainingConfig.modelType === 'efficientnetv2' && (
+                              <td className="px-4 py-3 whitespace-nowrap text-sm">
+                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                  iteration.phase === 1 ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'
+                                }`}>
+                                  Phase {iteration.phase}
+                                </span>
+                              </td>
+                            )}
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                              {iteration.batch}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                              {iteration.loss.toFixed(4)}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                              {(iteration.accuracy * 100).toFixed(2)}%
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-16">
+                  <div className="text-6xl mb-4">📊</div>
+                  <p className="text-gray-600 font-medium text-lg">No iteration data available yet</p>
+                  <p className="text-gray-500 text-sm mt-2">
+                    Iteration details will appear here once training starts
                   </p>
                 </div>
               )}
