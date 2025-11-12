@@ -13,8 +13,6 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
   const [trainingDuration, setTrainingDuration] = useState(0);
   const [isStoppingTraining, setIsStoppingTraining] = useState(false);
   const [activeTab, setActiveTab] = useState('charts');
-  const [showGradCAMTab, setShowGradCAMTab] = useState(false);
-  const [gradcamLoading, setGradcamLoading] = useState(false);
   // إضافة state للـ iterations
   const [currentBatch, setCurrentBatch] = useState(0);
   const [totalBatches, setTotalBatches] = useState(0);
@@ -63,13 +61,9 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
     };
   }, [isTraining, trainingStartTime]);
 
-  // Auto-start Grad-CAM when training completes
-  useEffect(() => {
-    if (!isTraining && results && !showGradCAMTab && trainingConfig.modelType === 'efficientnetv2') {
-      console.log('🔮 Starting Grad-CAM computation...');
-      computeGradCAM();
-    }
-  }, [isTraining, results]);
+  // Note: Backend automatically starts Grad-CAM computation after training completes
+  // We don't need to manually trigger it from the frontend anymore
+  // The GradCAMViewer component will automatically poll for results
 
   const formatDuration = (seconds) => {
     if (seconds < 60) {
@@ -164,12 +158,21 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
         console.log('✅ Training completed!', data);
         setCurrentEpoch(data.epoch || trainingConfig.epochs);
         setTrainingData(data.history || []);
-        onTrainingComplete({
-          ...data,
-          results: data.results || {},
-          final_epoch: data.epoch || trainingConfig.epochs
-        });
-        toast.success('Training completed successfully!');
+
+        // Check if we have complete results with final_val_accuracy
+        if (data.results && data.results.final_val_accuracy !== undefined) {
+          console.log('✅ Complete results received with final_val_accuracy:', data.results.final_val_accuracy);
+          onTrainingComplete({
+            ...data,
+            results: data.results || {},
+            final_epoch: data.epoch || trainingConfig.epochs
+          });
+          toast.success('Training completed successfully!');
+        } else {
+          // Results not complete yet, continue polling
+          console.log('⏳ Training completed but waiting for complete results...');
+          pollingTimeoutRef.current = setTimeout(pollTrainingProgress, 1000);
+        }
       } else if (data.status === 'error') {
         console.error('❌ Training error:', data.error_message);
         toast.error(data.error_message || 'Training failed');
@@ -188,47 +191,7 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
     }
   };
 
-  const computeGradCAM = async () => {
-    try {
-      setGradcamLoading(true);
-      const sessionId = uploadedData?.preview?.session_id;
-
-      console.log('🔮 computeGradCAM called with sessionId:', sessionId);
-
-      if (!sessionId) {
-        console.error('❌ Session ID not found!');
-        setGradcamLoading(false);
-        return;
-      }
-
-      console.log('📤 Sending POST to /api/compute-gradcam...');
-      const response = await fetch('/api/compute-gradcam', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId })
-      });
-
-      console.log('📥 Response status:', response.status, response.ok);
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('✅ Grad-CAM computation started successfully:', data);
-        setShowGradCAMTab(true);
-        // Switch UI to the Grad-CAM tab so the viewer can poll and display results
-        setActiveTab('gradcam');
-        console.log('✅ Switched to gradcam tab, showGradCAMTab=true');
-      } else {
-        console.error('❌ Grad-CAM API returned error:', response.status);
-        const errorData = await response.json().catch(() => ({}));
-        console.error('Error details:', errorData);
-      }
-    } catch (error) {
-      console.error('❌ Error starting Grad-CAM:', error);
-    } finally {
-      setGradcamLoading(false);
-      console.log('🔄 gradcamLoading set to false');
-    }
-  };
+  // Removed computeGradCAM - Backend now automatically starts Grad-CAM after training completes
 
   const handleStopTraining = async () => {
     if (isStoppingTraining) return;
@@ -266,7 +229,6 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
         setCurrentEpoch(0);
         setTrainingDuration(0);
         setTrainingStartTime(null);
-        setShowGradCAMTab(false);
         setCurrentPhase(1);
         onReset();
       } else {
@@ -310,12 +272,21 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
   const getTrainingProgress = () => {
     if (trainingConfig.modelType === 'efficientnetv2') {
       const totalEpochs = (trainingConfig.epochs || 30) + (trainingConfig.phase2_epochs || 25);
-      if (results && !isTraining) return 100;
-      return Math.min((currentEpoch / totalEpochs) * 100, 100);
+      // Only return 100% if training is ACTUALLY completed (not training + has results)
+      if (!isTraining && results && results.final_val_accuracy !== undefined) {
+        return 100;
+      }
+      // During training, use actual epoch count
+      if (currentEpoch === 0) return 0;
+      return Math.min((currentEpoch / totalEpochs) * 100, 99.9); // Cap at 99.9% until truly done
     } else {
       if (!trainingConfig.epochs) return 0;
-      if (results && !isTraining) return 100;
-      return Math.min((currentEpoch / trainingConfig.epochs) * 100, 100);
+      // Only return 100% if training is ACTUALLY completed
+      if (!isTraining && results && results.final_val_accuracy !== undefined) {
+        return 100;
+      }
+      if (currentEpoch === 0) return 0;
+      return Math.min((currentEpoch / trainingConfig.epochs) * 100, 99.9);
     }
   };
 
@@ -355,7 +326,7 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
         bgColor: 'bg-blue-50',
         icon: '🔄'
       };
-    } else if (results) {
+    } else if (results && !isTraining) {
       return {
         text: 'Training completed',
         color: 'text-green-600',
@@ -622,7 +593,6 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
                 }`}
               >
                 🔍 Grad-CAM
-                {!showGradCAMTab && <span className="ml-2 text-xs">⏳</span>}
               </button>
             )}
 
@@ -809,34 +779,10 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
           {/* Grad-CAM Tab */}
           {activeTab === 'gradcam' && trainingConfig.modelType === 'efficientnetv2' && (
             <div>
-              {/* Debug Info */}
-              <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs">
-                <strong>🐛 Grad-CAM Debug:</strong>
-                showGradCAMTab: {showGradCAMTab ? 'true' : 'false'} |
-                gradcamLoading: {gradcamLoading ? 'true' : 'false'} |
-                sessionId: {uploadedData?.preview?.session_id || 'undefined'}
-              </div>
-
-              {showGradCAMTab && !gradcamLoading ? (
-                <GradCAMViewer
-                  sessionId={uploadedData?.preview?.session_id}
-                  modelId={results?.model_type}
-                />
-              ) : (
-                <div className="text-center py-16">
-                  <div className="animate-spin rounded-full h-16 w-16 border-4 border-purple-600 border-t-transparent mx-auto mb-4"></div>
-                  <p className="text-gray-600 font-medium text-lg">Computing Grad-CAM Visualization...</p>
-                  <p className="text-gray-500 text-sm mt-3">This may take 30-60 seconds. Please be patient.</p>
-                  <div className="mt-6">
-                    <div className="w-80 h-2 bg-gray-200 rounded-full mx-auto overflow-hidden">
-                      <div className="h-full bg-purple-600 animate-pulse" style={{ width: '60%' }}></div>
-                    </div>
-                  </div>
-                  <p className="text-purple-600 text-xs mt-4 italic">
-                    Processing selected images from each class...
-                  </p>
-                </div>
-              )}
+              <GradCAMViewer
+                sessionId={uploadedData?.preview?.session_id}
+                modelId={results?.model_type}
+              />
             </div>
           )}
 
@@ -1069,34 +1015,10 @@ const TrainingResults = ({ trainingConfig, uploadedData, isTraining, results, on
       {/* Grad-CAM Tab - Outside trainingData check */}
       {activeTab === 'gradcam' && trainingConfig.modelType === 'efficientnetv2' && (
         <div className="bg-white rounded-xl shadow-lg p-8">
-          {/* Debug Info */}
-          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs">
-            <strong>🐛 Grad-CAM Debug:</strong>
-            showGradCAMTab: {showGradCAMTab ? 'true' : 'false'} |
-            gradcamLoading: {gradcamLoading ? 'true' : 'false'} |
-            sessionId: {uploadedData?.preview?.session_id || 'undefined'}
-          </div>
-
-          {showGradCAMTab && !gradcamLoading ? (
-            <GradCAMViewer
-              sessionId={uploadedData?.preview?.session_id}
-              modelId={results?.model_type}
-            />
-          ) : (
-            <div className="text-center py-16">
-              <div className="animate-spin rounded-full h-16 w-16 border-4 border-purple-600 border-t-transparent mx-auto mb-4"></div>
-              <p className="text-gray-600 font-medium text-lg">Computing Grad-CAM Visualization...</p>
-              <p className="text-gray-500 text-sm mt-3">This may take 30-60 seconds. Please be patient.</p>
-              <div className="mt-6">
-                <div className="w-80 h-2 bg-gray-200 rounded-full mx-auto overflow-hidden">
-                  <div className="h-full bg-purple-600 animate-pulse" style={{ width: '60%' }}></div>
-                </div>
-              </div>
-              <p className="text-purple-600 text-xs mt-4 italic">
-                Processing selected images from each class...
-              </p>
-            </div>
-          )}
+          <GradCAMViewer
+            sessionId={uploadedData?.preview?.session_id}
+            modelId={results?.model_type}
+          />
         </div>
       )}
 

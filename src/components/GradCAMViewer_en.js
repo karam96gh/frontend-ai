@@ -7,7 +7,7 @@ const GradCAMViewer = ({ sessionId }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [showExplanation, setShowExplanation] = useState(true);
 
-  // تحميل بيانات Grad-CAM عند التركيب
+  // Load Grad-CAM data on mount
   useEffect(() => {
     if (sessionId) {
       console.log('🚀 GradCAMViewer mounted with sessionId:', sessionId);
@@ -166,7 +166,7 @@ const GradCAMViewer = ({ sessionId }) => {
 
   return (
     <div className="space-y-6">
-      {/* شرح توضيحي */}
+      {/* Explanation */}
       {showExplanation && (
         <div className="bg-gradient-to-r from-purple-50 to-blue-50 border-2 border-purple-200 rounded-lg p-6 relative">
           <button
@@ -180,39 +180,39 @@ const GradCAMViewer = ({ sessionId }) => {
             <div className="text-4xl mr-4">🔍</div>
             <div className="flex-1">
               <h3 className="text-lg font-bold text-purple-900 mb-2">
-                ماذا تعني هذه الخريطة الحرارية؟
+                What does this heatmap mean?
               </h3>
               <p className="text-purple-800 text-sm mb-3">
-                تُظهر الخريطة الحرارية الأجزاء من الصورة التي ركّز عليها النموذج لاتخاذ قراره.
+                The heatmap shows which parts of the image the model focused on to make its decision.
               </p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
                 <div className="bg-white rounded p-3 border border-purple-200">
                   <div className="flex items-center mb-2">
                     <div className="w-4 h-4 bg-red-500 rounded mr-2"></div>
-                    <span className="font-semibold text-red-700">🔴 أحمر (مهم جداً)</span>
+                    <span className="font-semibold text-red-700">🔴 Red (Very Important)</span>
                   </div>
                   <p className="text-gray-700">
-                    الأجزاء التي تؤثر بشدة على القرار
+                    Parts that strongly influence the decision
                   </p>
                 </div>
 
                 <div className="bg-white rounded p-3 border border-purple-200">
                   <div className="flex items-center mb-2">
                     <div className="w-4 h-4 bg-yellow-500 rounded mr-2"></div>
-                    <span className="font-semibold text-yellow-700">🟡 أصفر (متوسط)</span>
+                    <span className="font-semibold text-yellow-700">🟡 Yellow (Moderate)</span>
                   </div>
                   <p className="text-gray-700">
-                    أجزاء مهمة لكن أقل تأثيراً
+                    Important parts but less influential
                   </p>
                 </div>
 
                 <div className="bg-white rounded p-3 border border-purple-200">
                   <div className="flex items-center mb-2">
                     <div className="w-4 h-4 bg-blue-500 rounded mr-2"></div>
-                    <span className="font-semibold text-blue-700">🔵 أزرق (أقل)</span>
+                    <span className="font-semibold text-blue-700">🔵 Blue (Less)</span>
                   </div>
                   <p className="text-gray-700">
-                    أجزاء ليست مهمة للقرار
+                    Parts not important for the decision
                   </p>
                 </div>
               </div>
@@ -221,23 +221,23 @@ const GradCAMViewer = ({ sessionId }) => {
         </div>
       )}
 
-      {/* عرض الصور */}
+      {/* Image Display */}
       <div className="bg-white rounded-xl shadow-lg p-8">
         <h3 className="text-2xl font-bold text-gray-900 mb-6">
-          🔬 تصور قرار النموذج
+          🔬 Model Decision Visualization
         </h3>
 
-        {/* الشرح */}
+        {/* Explanation */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
           <p className="text-blue-900 text-sm">
-            💡 <strong>كيف يعمل:</strong> النموذج يركز على أجزاء محددة من الصورة (الأحمر والأصفر) 
-            لاتخاذ قراره. الأزرق تعني الأجزاء غير المهمة.
+            💡 <strong>How it works:</strong> The model focuses on specific parts of the image (red and yellow)
+            to make its decision. Blue means less important parts.
           </p>
         </div>
 
-        {/* الصور الثلاثة */}
+        {/* Three Images */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          {/* الصورة الأصلية */}
+          {/* Original Image */}
           <div className="flex flex-col">
             <div className="bg-gray-100 rounded-lg p-4 flex items-center justify-center" style={{ height: '300px' }}>
               <img
@@ -246,11 +246,11 @@ const GradCAMViewer = ({ sessionId }) => {
                 className="max-h-full max-w-full rounded"
               />
             </div>
-            <p className="text-center mt-3 font-semibold text-gray-900">🔬 الصورة الأصلية</p>
+            <p className="text-center mt-3 font-semibold text-gray-900">🔬 Original Image</p>
             <p className="text-center text-xs text-gray-600 mt-1">MRI Image</p>
           </div>
 
-          {/* الدمج (Original + Heatmap) */}
+          {/* Overlay (Original + Heatmap) */}
           <div className="flex flex-col">
             <div className="bg-gray-100 rounded-lg p-4 flex items-center justify-center" style={{ height: '300px' }}>
               <img
@@ -259,13 +259,13 @@ const GradCAMViewer = ({ sessionId }) => {
                 className="max-h-full max-w-full rounded"
               />
             </div>
-            <p className="text-center mt-3 font-semibold text-gray-900">🎯 تركيز النموذج</p>
+            <p className="text-center mt-3 font-semibold text-gray-900">🎯 Model Focus</p>
             <p className="text-center text-xs text-gray-600 mt-1">
-              ما ركز عليه النموذج (معلوف مع الأصلية)
+              What the model focused on (overlaid with original)
             </p>
           </div>
 
-          {/* خريطة الحرارة فقط */}
+          {/* Heatmap Only */}
           <div className="flex flex-col">
             <div className="bg-gray-100 rounded-lg p-4 flex items-center justify-center relative" style={{ height: '300px' }}>
               <img
@@ -273,45 +273,45 @@ const GradCAMViewer = ({ sessionId }) => {
                 alt="Heatmap"
                 className="max-h-full max-w-full rounded"
               />
-              {/* أسطورة الألوان */}
+              {/* Color Legend */}
               <div className="absolute bottom-2 left-2 w-8 h-24 bg-gradient-to-b from-red-500 via-yellow-500 to-blue-500 rounded border border-gray-400"></div>
             </div>
-            <p className="text-center mt-3 font-semibold text-gray-900">🔥 خريطة الانتباه</p>
-            <p className="text-center text-xs text-gray-600 mt-1">شدة الانتباه (أحمر = أهم)</p>
+            <p className="text-center mt-3 font-semibold text-gray-900">🔥 Attention Map</p>
+            <p className="text-center text-xs text-gray-600 mt-1">Attention intensity (red = most important)</p>
           </div>
         </div>
 
-        {/* النتيجة الرئيسية - Enhanced like Colab ✅ */}
+        {/* Main Result - Enhanced like Colab ✅ */}
         <div className="bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg p-6 mb-6 text-white text-center">
-          <p className="text-sm font-medium mb-2">🎯 التنبؤ النهائي</p>
+          <p className="text-sm font-medium mb-2">🎯 Final Prediction</p>
           <h2 className="text-4xl font-bold mb-2">
             {currentSample.class_name}
           </h2>
           <p className="text-xl font-semibold">
-            {(currentSample.confidence * 100).toFixed(1)}% ثقة
+            {(currentSample.confidence * 100).toFixed(1)}% confidence
           </p>
           {currentSample.confidence > 0.9 && (
             <p className="text-sm mt-2 bg-white/20 rounded-full px-4 py-1 inline-block">
-              ✅ دقة عالية جداً
+              ✅ Very High Accuracy
             </p>
           )}
           {currentSample.confidence > 0.7 && currentSample.confidence <= 0.9 && (
             <p className="text-sm mt-2 bg-white/20 rounded-full px-4 py-1 inline-block">
-              👍 دقة جيدة
+              👍 Good Accuracy
             </p>
           )}
           {currentSample.confidence <= 0.7 && (
             <p className="text-sm mt-2 bg-white/20 rounded-full px-4 py-1 inline-block">
-              ⚠️ ثقة متوسطة
+              ⚠️ Moderate Confidence
             </p>
           )}
         </div>
 
-        {/* Top 3 Predictions - نفس طريقة Colab ✅ */}
+        {/* Top 3 Predictions - Same as Colab ✅ */}
         <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-6 mb-6">
           <h4 className="font-semibold text-gray-900 mb-4 flex items-center">
             <span className="text-2xl mr-2">📊</span>
-            أفضل 3 توقعات (Top-3 Predictions)
+            Top-3 Predictions
           </h4>
 
           <div className="space-y-4">
@@ -343,7 +343,7 @@ const GradCAMViewer = ({ sessionId }) => {
                       </span>
                     </div>
 
-                    {/* شريط التقدم مع الأحرف █ (نفس Colab) */}
+                    {/* Progress bar with █ characters (same as Colab) */}
                     <div className="flex items-center space-x-2">
                       <div className="flex-1 bg-gray-200 rounded-full h-3">
                         <div
@@ -359,7 +359,7 @@ const GradCAMViewer = ({ sessionId }) => {
                 );
               })
             ) : (
-              // Fallback: إذا ما كان في top3_predictions، استخدم all_predictions
+              // Fallback: if no top3_predictions, use all_predictions
               Object.entries(currentSample.all_predictions)
                 .sort(([, a], [, b]) => b - a)
                 .slice(0, 3)
@@ -407,11 +407,11 @@ const GradCAMViewer = ({ sessionId }) => {
             )}
           </div>
 
-          {/* All predictions في قسم قابل للطي */}
+          {/* All predictions in collapsible section */}
           <details className="mt-6">
             <summary className="cursor-pointer text-sm text-gray-600 hover:text-gray-900 font-medium flex items-center">
               <span className="mr-2">📋</span>
-              عرض جميع التوقعات ({Object.keys(currentSample.all_predictions).length} فئات)
+              Show all predictions ({Object.keys(currentSample.all_predictions).length} classes)
             </summary>
             <div className="mt-4 space-y-2">
               {Object.entries(currentSample.all_predictions)
@@ -437,22 +437,22 @@ const GradCAMViewer = ({ sessionId }) => {
         </div>
       </div>
 
-      {/* التنقل بين الصور */}
+      {/* Navigation between images */}
       <div className="flex items-center justify-center space-x-6 mb-6">
         <button
           onClick={() => setCurrentIndex(Math.max(0, currentIndex - 1))}
           disabled={currentIndex === 0}
           className="px-4 py-2 bg-gray-300 text-gray-900 rounded-lg hover:bg-gray-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
-          ← السابقة
+          ← Previous
         </button>
 
         <div className="text-center">
           <p className="font-semibold text-gray-900">
-            صورة {currentIndex + 1} من {gradcamData.num_samples}
+            Image {currentIndex + 1} of {gradcamData.num_samples}
           </p>
           <p className="text-xs text-gray-600">
-            {currentSample.class_name} - {(currentSample.confidence * 100).toFixed(1)}% ثقة
+            {currentSample.class_name} - {(currentSample.confidence * 100).toFixed(1)}% confidence
           </p>
         </div>
 
@@ -461,11 +461,11 @@ const GradCAMViewer = ({ sessionId }) => {
           disabled={currentIndex === gradcamData.num_samples - 1}
           className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
-          التالية →
+          Next →
         </button>
       </div>
 
-      {/* مؤشر التقدم */}
+      {/* Progress indicator */}
       <div className="flex justify-center space-x-2">
         {Array.from({ length: gradcamData.num_samples }).map((_, idx) => (
           <button
@@ -476,7 +476,7 @@ const GradCAMViewer = ({ sessionId }) => {
                 ? 'bg-purple-600 w-8'
                 : 'bg-gray-300 hover:bg-gray-400'
             }`}
-            title={`صورة ${idx + 1}`}
+            title={`Image ${idx + 1}`}
           />
         ))}
       </div>
